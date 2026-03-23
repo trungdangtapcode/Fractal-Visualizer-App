@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './fractal.css';
 import {
-  MVIEW, JVIEW, PVIEW,
+  MVIEW, JVIEW, PVIEW, OVIEW,
   iterate, renderFractal, renderOrbit,
   drawCursor, markPoint, fmt, inMand, inJulia
 } from './lib/fractalRender';
@@ -32,8 +32,10 @@ export default function App() {
     cx: -0.7269, cy: 0.1889,
     z0x: 0, z0y: 0,
     dragC: false, dragZ: false,
+    mQ: { p: false, t: null as any },
     jQ: { p: false, cx: 0, cy: 0, t: null as any },
-    pQ: { p: false, z0x: 0, z0y: 0, t: null as any }
+    pQ: { p: false, z0x: 0, z0y: 0, t: null as any },
+    oQ: { t: null as any }
   });
 
   const rel = (e: React.MouseEvent, w: HTMLElement) => {
@@ -49,6 +51,45 @@ export default function App() {
   const updateZDisplay = (nzx: number, nzy: number) => {
     s.current.z0x = nzx; s.current.z0y = nzy;
     setZVal({ z0x: nzx, z0y: nzy });
+  };
+
+  const handleWheel = (e: React.WheelEvent, view: {x:number, y:number, w:number, h:number}, redraw: (hi: boolean) => void, qRef: any) => {
+    const wrap = e.currentTarget as HTMLElement;
+    const [rx, ry] = rel(e as any, wrap);
+    const zoomIn = e.deltaY < 0;
+    const factor = zoomIn ? 0.8 : 1.25;
+
+    const fx = view.x + rx * view.w;
+    const fy = view.y + ry * view.h;
+
+    view.w *= factor;
+    view.h *= factor;
+    view.x = fx - rx * view.w;
+    view.y = fy - ry * view.h;
+
+    redraw(false);
+    if(qRef) {
+      clearTimeout(qRef.t);
+      qRef.t = setTimeout(() => redraw(true), 300);
+    }
+  };
+
+  const mWrapWheel = (e: React.WheelEvent) => handleWheel(e, MVIEW, scheduleMandelbrot, s.current.mQ);
+  const jWrapWheel = (e: React.WheelEvent) => handleWheel(e, JVIEW, (hi) => scheduleJulia(s.current.cx, s.current.cy, hi), s.current.jQ);
+  const pWrapWheel = (e: React.WheelEvent) => handleWheel(e, PVIEW, (hi) => scheduleParamPlane(s.current.z0x, s.current.z0y, hi), s.current.pQ);
+  const oWrapWheel = (e: React.WheelEvent) => handleWheel(e, OVIEW, () => scheduleOrbit(), s.current.oQ);
+
+  const scheduleMandelbrot = (hi: boolean) => {
+    const q = s.current.mQ;
+    if (q.p) return; q.p = true;
+    requestAnimationFrame(() => {
+      q.p = false;
+      const mx = hi ? 200 : 60;
+      renderFractal(mCanvas.current, MVIEW, 0, 0, 0, 0, mx, false);
+      setMLoading(false);
+      setMChipTxt(`max iter: ${mx}`);
+      markPoint(mOver.current, MVIEW, s.current.cx, s.current.cy, '#00e5ff');
+    });
   };
 
   const scheduleOrbit = () => {
@@ -377,7 +418,7 @@ export default function App() {
               <span className="panel-title"><span className="dot dot-o"></span>③ z₀-Plane</span>
               <span className="panel-formula">z₀ cố định · c = biến số</span>
             </div>
-            <div className="canvas-wrap" onMouseDown={pWrapDown} onMouseMove={pWrapMove} onMouseUp={pWrapUp} onMouseLeave={pWrapLeave}>
+            <div className="canvas-wrap" onMouseDown={pWrapDown} onMouseMove={pWrapMove} onMouseUp={pWrapUp} onMouseLeave={pWrapLeave} onWheel={pWrapWheel}>
               <canvas ref={pCanvas} className="canvas-abs"></canvas>
               <canvas ref={pOver} className="canvas-abs no-ptr"></canvas>
               <div className="chip">{pChipTxt}</div>
@@ -390,7 +431,7 @@ export default function App() {
               <span className="panel-title"><span className="dot dot-m"></span>② Julia Set — J(c)</span>
               <span className="panel-formula">c cố định · z₀ = biến số</span>
             </div>
-            <div className="canvas-wrap" onMouseDown={jWrapDown} onMouseMove={jWrapMove} onMouseUp={jWrapUp} onMouseLeave={jWrapLeave}>
+            <div className="canvas-wrap" onMouseDown={jWrapDown} onMouseMove={jWrapMove} onMouseUp={jWrapUp} onMouseLeave={jWrapLeave} onWheel={jWrapWheel}>
               <canvas ref={jCanvas} className="canvas-abs"></canvas>
               <canvas ref={jOver} className="canvas-abs no-ptr"></canvas>
               <div className="chip">{jChipTxt}</div>
@@ -403,7 +444,7 @@ export default function App() {
               <span className="panel-title"><span className="dot dot-c"></span>① Mandelbrot</span>
               <span className="panel-formula">z₀ = 0 cố định · c = biến số</span>
             </div>
-            <div className="canvas-wrap" onMouseDown={mWrapDown} onMouseMove={mWrapMove} onMouseUp={mWrapUp} onMouseLeave={mWrapLeave}>
+            <div className="canvas-wrap" onMouseDown={mWrapDown} onMouseMove={mWrapMove} onMouseUp={mWrapUp} onMouseLeave={mWrapLeave} onWheel={mWrapWheel}>
               <canvas ref={mCanvas} className="canvas-abs"></canvas>
               <canvas ref={mOver} className="canvas-abs no-ptr"></canvas>
               <div className="chip">{mChipTxt}</div>
@@ -416,7 +457,7 @@ export default function App() {
               <span className="panel-title"><span className="dot dot-p"></span>④ Orbit</span>
               <span className="panel-formula">z₀ → z² + c (lặp)</span>
             </div>
-            <div className="canvas-wrap" style={{ cursor: 'default' }}>
+            <div className="canvas-wrap" style={{ cursor: 'crosshair' }} onWheel={oWrapWheel}>
               <canvas ref={oCanvas} className="canvas-abs" id="orbit-canvas"></canvas>
               <div className="chip">{oChipTxt}</div>
               <div className={`loading ${!oLoading ? 'gone' : ''}`}><div className="spin p"></div><span className="load-txt">Needs values…</span></div>
