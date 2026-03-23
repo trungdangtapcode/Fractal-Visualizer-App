@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './fractal.css';
 import {
-  MVIEW, JVIEW, PVIEW,
+  MVIEW, JVIEW, PVIEW, OVIEW,
   iterate, renderFractal, renderOrbit,
   drawCursor, markPoint, fmt, inMand, inJulia
 } from './lib/fractalRender';
@@ -32,13 +32,44 @@ export default function App() {
     cx: -0.7269, cy: 0.1889,
     z0x: 0, z0y: 0,
     dragC: false, dragZ: false,
+    panActive: false, panLastX: 0, panLastY: 0,
+    mQ: { p: false, t: null as any },
     jQ: { p: false, cx: 0, cy: 0, t: null as any },
-    pQ: { p: false, z0x: 0, z0y: 0, t: null as any }
+    pQ: { p: false, z0x: 0, z0y: 0, t: null as any },
+    oQ: { t: null as any }
   });
 
   const rel = (e: React.MouseEvent, w: HTMLElement) => {
     const r = w.getBoundingClientRect();
     return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height];
+  };
+
+  const handlePanStart = (e: React.MouseEvent) => {
+    s.current.panActive = true;
+    s.current.panLastX = e.clientX;
+    s.current.panLastY = e.clientY;
+    (e.currentTarget as HTMLElement).style.cursor = 'move';
+  };
+
+  const handlePanMove = (e: React.MouseEvent, view: {x:number, y:number, w:number, h:number}, redraw: (hi: boolean) => void, qRef: any) => {
+    const dx = e.clientX - s.current.panLastX;
+    const dy = e.clientY - s.current.panLastY;
+    s.current.panLastX = e.clientX;
+    s.current.panLastY = e.clientY;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    view.x -= view.w * (dx / r.width);
+    view.y -= view.h * (dy / r.height);
+    redraw(false);
+    if(qRef) {
+      clearTimeout(qRef.t);
+      qRef.t = setTimeout(() => redraw(true), 300);
+    }
+  };
+
+  const handlePanEnd = (e: React.MouseEvent, redraw: (hi: boolean) => void, isOrbit=false) => {
+    s.current.panActive = false;
+    (e.currentTarget as HTMLElement).style.cursor = isOrbit ? 'crosshair' : 'grab';
+    redraw(true);
   };
 
   const updateCDisplay = (ncx: number, ncy: number) => {
@@ -49,6 +80,58 @@ export default function App() {
   const updateZDisplay = (nzx: number, nzy: number) => {
     s.current.z0x = nzx; s.current.z0y = nzy;
     setZVal({ z0x: nzx, z0y: nzy });
+  };
+
+  const handleWheel = (e: React.WheelEvent, view: {x:number, y:number, w:number, h:number}, redraw: (hi: boolean) => void, qRef: any) => {
+    const wrap = e.currentTarget as HTMLElement;
+    const [rx, ry] = rel(e as any, wrap);
+    const zoomIn = e.deltaY < 0;
+    const factor = zoomIn ? 0.8 : 1.25;
+
+    const fx = view.x + rx * view.w;
+    const fy = view.y + ry * view.h;
+
+    view.w *= factor;
+    view.h *= factor;
+    view.x = fx - rx * view.w;
+    view.y = fy - ry * view.h;
+
+    redraw(false);
+    if(qRef) {
+      clearTimeout(qRef.t);
+      qRef.t = setTimeout(() => redraw(true), 300);
+    }
+  };
+
+  const mWrapWheel = (e: React.WheelEvent) => handleWheel(e, MVIEW, scheduleMandelbrot, s.current.mQ);
+  const jWrapWheel = (e: React.WheelEvent) => handleWheel(e, JVIEW, (hi) => scheduleJulia(s.current.cx, s.current.cy, hi), s.current.jQ);
+  const pWrapWheel = (e: React.WheelEvent) => handleWheel(e, PVIEW, (hi) => scheduleParamPlane(s.current.z0x, s.current.z0y, hi), s.current.pQ);
+  const oWrapWheel = (e: React.WheelEvent) => handleWheel(e, OVIEW, () => scheduleOrbit(), s.current.oQ);
+
+  const oWrapDown = (e: React.MouseEvent) => {
+    if (e.button === 1) handlePanStart(e);
+  };
+  const oWrapMove = (e: React.MouseEvent) => {
+    if (s.current.panActive || (e.buttons & 4)) handlePanMove(e, OVIEW, scheduleOrbit, s.current.oQ);
+  };
+  const oWrapUp = (e: React.MouseEvent) => {
+    if (s.current.panActive) handlePanEnd(e, scheduleOrbit, true);
+  };
+  const oWrapLeave = (e: React.MouseEvent) => {
+    if (s.current.panActive) handlePanEnd(e, scheduleOrbit, true);
+  };
+
+  const scheduleMandelbrot = (hi: boolean) => {
+    const q = s.current.mQ;
+    if (q.p) return; q.p = true;
+    requestAnimationFrame(() => {
+      q.p = false;
+      const mx = hi ? 200 : 60;
+      renderFractal(mCanvas.current, MVIEW, 0, 0, 0, 0, mx, false);
+      setMLoading(false);
+      setMChipTxt(`max iter: ${mx}`);
+      markPoint(mOver.current, MVIEW, s.current.cx, s.current.cy, '#00e5ff');
+    });
   };
 
   const scheduleOrbit = () => {
@@ -128,6 +211,8 @@ export default function App() {
 
   // ======== ① MANDELBROT DRAG EVENTS ========
   const mWrapDown = (e: React.MouseEvent) => {
+    if (e.button === 1) return handlePanStart(e);
+    if (e.button !== 0) return;
     s.current.dragC = true;
     (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
     const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
@@ -140,10 +225,11 @@ export default function App() {
   };
 
   const mWrapMove = (e: React.MouseEvent) => {
+    if (s.current.panActive || (e.buttons & 4)) return handlePanMove(e, MVIEW, scheduleMandelbrot, s.current.mQ);
     const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
     const prx = (s.current.cx - MVIEW.x) / MVIEW.w;
     const pry = (s.current.cy - MVIEW.y) / MVIEW.h;
-    
+
     // Check if mouse is hovering near current target point
     const isNear = Math.hypot(rx - prx, ry - pry) < 0.05;
 
@@ -168,6 +254,7 @@ export default function App() {
   };
 
   const mWrapUp = (e: React.MouseEvent) => {
+    if (s.current.panActive) return handlePanEnd(e, scheduleMandelbrot);
     if (s.current.dragC) {
       s.current.dragC = false;
       const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
@@ -179,6 +266,7 @@ export default function App() {
   };
 
   const mWrapLeave = (e: React.MouseEvent) => {
+    if (s.current.panActive) handlePanEnd(e, scheduleMandelbrot);
     if (s.current.dragC) {
       s.current.dragC = false;
       scheduleJulia(s.current.cx, s.current.cy, true);
@@ -194,6 +282,8 @@ export default function App() {
 
   // ======== ② JULIA DRAG EVENTS ========
   const jWrapDown = (e: React.MouseEvent) => {
+    if (e.button === 1) return handlePanStart(e);
+    if (e.button !== 0) return;
     s.current.dragZ = true;
     (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
     const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
@@ -205,6 +295,7 @@ export default function App() {
   };
 
   const jWrapMove = (e: React.MouseEvent) => {
+    if (s.current.panActive || (e.buttons & 4)) return handlePanMove(e, JVIEW, (hi) => scheduleJulia(s.current.cx, s.current.cy, hi), s.current.jQ);
     const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
     const prx = (s.current.z0x - JVIEW.x) / JVIEW.w;
     const pry = (s.current.z0y - JVIEW.y) / JVIEW.h;
@@ -229,6 +320,7 @@ export default function App() {
   };
 
   const jWrapUp = (e: React.MouseEvent) => {
+    if (s.current.panActive) return handlePanEnd(e, (hi) => scheduleJulia(s.current.cx, s.current.cy, hi));
     if (s.current.dragZ) {
       s.current.dragZ = false;
       const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
@@ -239,6 +331,7 @@ export default function App() {
   };
 
   const jWrapLeave = (e: React.MouseEvent) => {
+    if (s.current.panActive) handlePanEnd(e, (hi) => scheduleJulia(s.current.cx, s.current.cy, hi));
     if (s.current.dragZ) {
       s.current.dragZ = false;
       scheduleParamPlane(s.current.z0x, s.current.z0y, true);
@@ -250,6 +343,74 @@ export default function App() {
     setJChipTxt(`c: ${fmt(s.current.cx, s.current.cy)}`);
   };
 
+
+  // ======== ③ PARAMETER PLANE DRAG EVENTS (Mirror of ①) ========
+  const pWrapDown = (e: React.MouseEvent) => {
+    if (e.button === 1) return handlePanStart(e);
+    if (e.button !== 0) return;
+    s.current.dragC = true; // Use the same dragC state since both planes edit `c`
+    (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
+    const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
+    const ncx = PVIEW.x + rx * PVIEW.w, ncy = PVIEW.y + ry * PVIEW.h;
+    updateCDisplay(ncx, ncy);
+    drawCursor(pOver.current, rx, ry, '#00e5ff', 'drag');
+    markPoint(mOver.current, MVIEW, ncx, ncy, '#00e5ff');
+    scheduleJulia(ncx, ncy, false);
+    scheduleOrbit();
+  };
+
+  const pWrapMove = (e: React.MouseEvent) => {
+    if (s.current.panActive || (e.buttons & 4)) return handlePanMove(e, PVIEW, (hi) => scheduleParamPlane(s.current.z0x, s.current.z0y, hi), s.current.pQ);
+    const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
+    const prx = (s.current.cx - PVIEW.x) / PVIEW.w;
+    const pry = (s.current.cy - PVIEW.y) / PVIEW.h;
+    const isNear = Math.hypot(rx - prx, ry - pry) < 0.05;
+
+    if (s.current.dragC) {
+      const ncx = PVIEW.x + rx * PVIEW.w, ncy = PVIEW.y + ry * PVIEW.h;
+      updateCDisplay(ncx, ncy);
+      drawCursor(pOver.current, rx, ry, '#00e5ff', 'drag');
+      markPoint(mOver.current, MVIEW, ncx, ncy, '#00e5ff');
+      scheduleJulia(ncx, ncy, false);
+      scheduleOrbit();
+    } else {
+      drawCursor(pOver.current, prx, pry, '#00e5ff', isNear ? 'hover' : 'normal');
+      (e.currentTarget as HTMLElement).style.cursor = isNear ? 'grab' : 'crosshair';
+      if (isNear) {
+        setPChipTxt(`Hovering c: ${fmt(s.current.cx, s.current.cy)}`);
+      } else {
+        const isZero = Math.abs(s.current.z0x) < .001 && Math.abs(s.current.z0y) < .001;
+        setPChipTxt(isZero ? 'z₀=0 → giống Mandelbrot!' : 'z₀: ' + fmt(s.current.z0x, s.current.z0y));
+      }
+    }
+  };
+
+  const pWrapUp = (e: React.MouseEvent) => {
+    if (s.current.panActive) return handlePanEnd(e, (hi) => scheduleParamPlane(s.current.z0x, s.current.z0y, hi));
+    if (s.current.dragC) {
+      s.current.dragC = false;
+      const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
+      drawCursor(pOver.current, rx, ry, '#00e5ff', 'hover');
+      markPoint(mOver.current, MVIEW, s.current.cx, s.current.cy, '#00e5ff');
+      (e.currentTarget as HTMLElement).style.cursor = 'grab';
+      scheduleJulia(s.current.cx, s.current.cy, true);
+    }
+  };
+
+  const pWrapLeave = (e: React.MouseEvent) => {
+    if (s.current.panActive) handlePanEnd(e, (hi) => scheduleParamPlane(s.current.z0x, s.current.z0y, hi));
+    if (s.current.dragC) {
+      s.current.dragC = false;
+      scheduleJulia(s.current.cx, s.current.cy, true);
+    }
+    const prx = (s.current.cx - PVIEW.x) / PVIEW.w;
+    const pry = (s.current.cy - PVIEW.y) / PVIEW.h;
+    drawCursor(pOver.current, prx, pry, '#00e5ff', 'normal');
+    markPoint(mOver.current, MVIEW, s.current.cx, s.current.cy, '#00e5ff');
+    (e.currentTarget as HTMLElement).style.cursor = 'crosshair';
+    const isZero = Math.abs(s.current.z0x) < .001 && Math.abs(s.current.z0y) < .001;
+    setPChipTxt(isZero ? 'z₀=0 → giống Mandelbrot!' : 'z₀: ' + fmt(s.current.z0x, s.current.z0y));
+  };
 
   const inM = inMand(cVal.cx, cVal.cy);
   const inJJ = inJulia(zVal.z0x, zVal.z0y, cVal.cx, cVal.cy);
@@ -311,36 +472,10 @@ export default function App() {
           
           <div className="panel">
             <div className="panel-head">
-              <span className="panel-title"><span className="dot dot-c"></span>① Mandelbrot</span>
-              <span className="panel-formula">z₀ = 0 cố định · c = biến số</span>
-            </div>
-            <div className="canvas-wrap" onMouseDown={mWrapDown} onMouseMove={mWrapMove} onMouseUp={mWrapUp} onMouseLeave={mWrapLeave}>
-              <canvas ref={mCanvas} className="canvas-abs"></canvas>
-              <canvas ref={mOver} className="canvas-abs no-ptr"></canvas>
-              <div className="chip">{mChipTxt}</div>
-              <div className={`loading ${!mLoading ? 'gone' : ''}`}><div className="spin c"></div><span className="load-txt">Drawing…</span></div>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-head">
-              <span className="panel-title"><span className="dot dot-m"></span>② Julia Set — J(c)</span>
-              <span className="panel-formula">c cố định · z₀ = biến số</span>
-            </div>
-            <div className="canvas-wrap" onMouseDown={jWrapDown} onMouseMove={jWrapMove} onMouseUp={jWrapUp} onMouseLeave={jWrapLeave}>
-              <canvas ref={jCanvas} className="canvas-abs"></canvas>
-              <canvas ref={jOver} className="canvas-abs no-ptr"></canvas>
-              <div className="chip">{jChipTxt}</div>
-              <div className={`loading ${!jLoading ? 'gone' : ''}`}><div className="spin m"></div><span className="load-txt">Drag on ①…</span></div>
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-head">
               <span className="panel-title"><span className="dot dot-o"></span>③ z₀-Plane</span>
               <span className="panel-formula">z₀ cố định · c = biến số</span>
             </div>
-            <div className="canvas-wrap">
+            <div className="canvas-wrap" onMouseDown={pWrapDown} onMouseMove={pWrapMove} onMouseUp={pWrapUp} onMouseLeave={pWrapLeave} onWheel={pWrapWheel}>
               <canvas ref={pCanvas} className="canvas-abs"></canvas>
               <canvas ref={pOver} className="canvas-abs no-ptr"></canvas>
               <div className="chip">{pChipTxt}</div>
@@ -350,10 +485,36 @@ export default function App() {
 
           <div className="panel">
             <div className="panel-head">
+              <span className="panel-title"><span className="dot dot-m"></span>② Julia Set — J(c)</span>
+              <span className="panel-formula">c cố định · z₀ = biến số</span>
+            </div>
+            <div className="canvas-wrap" onMouseDown={jWrapDown} onMouseMove={jWrapMove} onMouseUp={jWrapUp} onMouseLeave={jWrapLeave} onWheel={jWrapWheel}>
+              <canvas ref={jCanvas} className="canvas-abs"></canvas>
+              <canvas ref={jOver} className="canvas-abs no-ptr"></canvas>
+              <div className="chip">{jChipTxt}</div>
+              <div className={`loading ${!jLoading ? 'gone' : ''}`}><div className="spin m"></div><span className="load-txt">Drag on ①…</span></div>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-head">
+              <span className="panel-title"><span className="dot dot-c"></span>① Mandelbrot</span>
+              <span className="panel-formula">z₀ = 0 cố định · c = biến số</span>
+            </div>
+            <div className="canvas-wrap" onMouseDown={mWrapDown} onMouseMove={mWrapMove} onMouseUp={mWrapUp} onMouseLeave={mWrapLeave} onWheel={mWrapWheel}>
+              <canvas ref={mCanvas} className="canvas-abs"></canvas>
+              <canvas ref={mOver} className="canvas-abs no-ptr"></canvas>
+              <div className="chip">{mChipTxt}</div>
+              <div className={`loading ${!mLoading ? 'gone' : ''}`}><div className="spin c"></div><span className="load-txt">Drawing…</span></div>
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-head">
               <span className="panel-title"><span className="dot dot-p"></span>④ Orbit</span>
               <span className="panel-formula">z₀ → z² + c (lặp)</span>
             </div>
-            <div className="canvas-wrap" style={{ cursor: 'default' }}>
+            <div className="canvas-wrap" style={{ cursor: 'crosshair' }} onMouseDown={oWrapDown} onMouseMove={oWrapMove} onMouseUp={oWrapUp} onMouseLeave={oWrapLeave} onWheel={oWrapWheel}>
               <canvas ref={oCanvas} className="canvas-abs" id="orbit-canvas"></canvas>
               <div className="chip">{oChipTxt}</div>
               <div className={`loading ${!oLoading ? 'gone' : ''}`}><div className="spin p"></div><span className="load-txt">Needs values…</span></div>
