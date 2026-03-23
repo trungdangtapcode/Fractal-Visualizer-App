@@ -251,6 +251,69 @@ export default function App() {
   };
 
 
+  // ======== ③ PARAMETER PLANE DRAG EVENTS (Mirror of ①) ========
+  const pWrapDown = (e: React.MouseEvent) => {
+    s.current.dragC = true; // Use the same dragC state since both planes edit `c`
+    (e.currentTarget as HTMLElement).style.cursor = 'grabbing';
+    const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
+    const ncx = PVIEW.x + rx * PVIEW.w, ncy = PVIEW.y + ry * PVIEW.h;
+    updateCDisplay(ncx, ncy);
+    drawCursor(pOver.current, rx, ry, '#00e5ff', 'drag');
+    markPoint(mOver.current, MVIEW, ncx, ncy, '#00e5ff');
+    scheduleJulia(ncx, ncy, false);
+    scheduleOrbit();
+  };
+
+  const pWrapMove = (e: React.MouseEvent) => {
+    const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
+    const prx = (s.current.cx - PVIEW.x) / PVIEW.w;
+    const pry = (s.current.cy - PVIEW.y) / PVIEW.h;
+    const isNear = Math.hypot(rx - prx, ry - pry) < 0.05;
+
+    if (s.current.dragC) {
+      const ncx = PVIEW.x + rx * PVIEW.w, ncy = PVIEW.y + ry * PVIEW.h;
+      updateCDisplay(ncx, ncy);
+      drawCursor(pOver.current, rx, ry, '#00e5ff', 'drag');
+      markPoint(mOver.current, MVIEW, ncx, ncy, '#00e5ff');
+      scheduleJulia(ncx, ncy, false);
+      scheduleOrbit();
+    } else {
+      drawCursor(pOver.current, prx, pry, '#00e5ff', isNear ? 'hover' : 'normal');
+      (e.currentTarget as HTMLElement).style.cursor = isNear ? 'grab' : 'crosshair';
+      if (isNear) {
+        setPChipTxt(`Hovering c: ${fmt(s.current.cx, s.current.cy)}`);
+      } else {
+        const isZero = Math.abs(s.current.z0x) < .001 && Math.abs(s.current.z0y) < .001;
+        setPChipTxt(isZero ? 'z₀=0 → giống Mandelbrot!' : 'z₀: ' + fmt(s.current.z0x, s.current.z0y));
+      }
+    }
+  };
+
+  const pWrapUp = (e: React.MouseEvent) => {
+    if (s.current.dragC) {
+      s.current.dragC = false;
+      const [rx, ry] = rel(e, e.currentTarget as HTMLElement);
+      drawCursor(pOver.current, rx, ry, '#00e5ff', 'hover');
+      markPoint(mOver.current, MVIEW, s.current.cx, s.current.cy, '#00e5ff');
+      (e.currentTarget as HTMLElement).style.cursor = 'grab';
+      scheduleJulia(s.current.cx, s.current.cy, true);
+    }
+  };
+
+  const pWrapLeave = (e: React.MouseEvent) => {
+    if (s.current.dragC) {
+      s.current.dragC = false;
+      scheduleJulia(s.current.cx, s.current.cy, true);
+    }
+    const prx = (s.current.cx - PVIEW.x) / PVIEW.w;
+    const pry = (s.current.cy - PVIEW.y) / PVIEW.h;
+    drawCursor(pOver.current, prx, pry, '#00e5ff', 'normal');
+    markPoint(mOver.current, MVIEW, s.current.cx, s.current.cy, '#00e5ff');
+    (e.currentTarget as HTMLElement).style.cursor = 'crosshair';
+    const isZero = Math.abs(s.current.z0x) < .001 && Math.abs(s.current.z0y) < .001;
+    setPChipTxt(isZero ? 'z₀=0 → giống Mandelbrot!' : 'z₀: ' + fmt(s.current.z0x, s.current.z0y));
+  };
+
   const inM = inMand(cVal.cx, cVal.cy);
   const inJJ = inJulia(zVal.z0x, zVal.z0y, cVal.cx, cVal.cy);
 
@@ -311,14 +374,14 @@ export default function App() {
           
           <div className="panel">
             <div className="panel-head">
-              <span className="panel-title"><span className="dot dot-c"></span>① Mandelbrot</span>
-              <span className="panel-formula">z₀ = 0 cố định · c = biến số</span>
+              <span className="panel-title"><span className="dot dot-o"></span>③ z₀-Plane</span>
+              <span className="panel-formula">z₀ cố định · c = biến số</span>
             </div>
-            <div className="canvas-wrap" onMouseDown={mWrapDown} onMouseMove={mWrapMove} onMouseUp={mWrapUp} onMouseLeave={mWrapLeave}>
-              <canvas ref={mCanvas} className="canvas-abs"></canvas>
-              <canvas ref={mOver} className="canvas-abs no-ptr"></canvas>
-              <div className="chip">{mChipTxt}</div>
-              <div className={`loading ${!mLoading ? 'gone' : ''}`}><div className="spin c"></div><span className="load-txt">Drawing…</span></div>
+            <div className="canvas-wrap" onMouseDown={pWrapDown} onMouseMove={pWrapMove} onMouseUp={pWrapUp} onMouseLeave={pWrapLeave}>
+              <canvas ref={pCanvas} className="canvas-abs"></canvas>
+              <canvas ref={pOver} className="canvas-abs no-ptr"></canvas>
+              <div className="chip">{pChipTxt}</div>
+              <div className={`loading ${!pLoading ? 'gone' : ''}`}><div className="spin o"></div><span className="load-txt">Drawing…</span></div>
             </div>
           </div>
 
@@ -337,14 +400,14 @@ export default function App() {
 
           <div className="panel">
             <div className="panel-head">
-              <span className="panel-title"><span className="dot dot-o"></span>③ z₀-Plane</span>
-              <span className="panel-formula">z₀ cố định · c = biến số</span>
+              <span className="panel-title"><span className="dot dot-c"></span>① Mandelbrot</span>
+              <span className="panel-formula">z₀ = 0 cố định · c = biến số</span>
             </div>
-            <div className="canvas-wrap">
-              <canvas ref={pCanvas} className="canvas-abs"></canvas>
-              <canvas ref={pOver} className="canvas-abs no-ptr"></canvas>
-              <div className="chip">{pChipTxt}</div>
-              <div className={`loading ${!pLoading ? 'gone' : ''}`}><div className="spin o"></div><span className="load-txt">Drawing…</span></div>
+            <div className="canvas-wrap" onMouseDown={mWrapDown} onMouseMove={mWrapMove} onMouseUp={mWrapUp} onMouseLeave={mWrapLeave}>
+              <canvas ref={mCanvas} className="canvas-abs"></canvas>
+              <canvas ref={mOver} className="canvas-abs no-ptr"></canvas>
+              <div className="chip">{mChipTxt}</div>
+              <div className={`loading ${!mLoading ? 'gone' : ''}`}><div className="spin c"></div><span className="load-txt">Drawing…</span></div>
             </div>
           </div>
 
