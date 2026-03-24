@@ -12,9 +12,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeFractal, onSelectFractal
 
   const fractals: FractalType[] = [
     'Mandelbrot',
-    'Julia',
-    'BurningShip',
-    'JuliaSpectrum',
+    // 'Julia',
+    // 'BurningShip',
+    // 'JuliaSpectrum',
     'KochSnowflake',
     'MinkowskiIsland',
     'SierpinskiTriangle',

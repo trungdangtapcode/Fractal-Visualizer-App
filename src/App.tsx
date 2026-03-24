@@ -198,7 +198,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (['Mandelbrot', 'Julia', 'BurningShip', 'JuliaSpectrum'].includes(activeFractal)) {
+    // , 'Julia', 'BurningShip', 'JuliaSpectrum'
+    if (['Mandelbrot'].includes(activeFractal)) {
       const timer = setTimeout(() => {
         if (!mCanvas.current) return;
         renderFractal(mCanvas.current, MVIEW, 0, 0, 0, 0, 200, false);
@@ -426,8 +427,9 @@ export default function App() {
     <>
       <Sidebar activeFractal={activeFractal as any} onSelectFractal={setActiveFractal} />
       <div className="fractal-root" style={{ marginLeft: '4rem', width: 'calc(100% - 4rem)' }}>
-
-        {['Mandelbrot', 'Julia', 'BurningShip', 'JuliaSpectrum'].includes(activeFractal) ? (
+    
+        {/* removed [..., 'Julia', 'BurningShip', 'JuliaSpectrum'] because of redundant */}
+        {['Mandelbrot'].includes(activeFractal) ? (
           <>
         <div className="fractal-sidebar">
         <header>
