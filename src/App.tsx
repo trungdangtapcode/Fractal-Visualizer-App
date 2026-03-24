@@ -198,20 +198,23 @@ export default function App() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      renderFractal(mCanvas.current, MVIEW, 0, 0, 0, 0, 200, false);
-      setMLoading(false);
-      setMChipTxt('max iter: 200');
+    if (['Mandelbrot', 'Julia', 'BurningShip', 'JuliaSpectrum'].includes(activeFractal)) {
+      const timer = setTimeout(() => {
+        if (!mCanvas.current) return;
+        renderFractal(mCanvas.current, MVIEW, 0, 0, 0, 0, 200, false);
+        setMLoading(false);
+        setMChipTxt('max iter: 200');
 
-      renderFractal(pCanvas.current, PVIEW, 0, 0, 0, 0, 200, false);
-      setPLoading(false);
+        renderFractal(pCanvas.current, PVIEW, 0, 0, 0, 0, 200, false);
+        setPLoading(false);
 
-      updateZDisplay(0, 0);
-      setCAndSync(-0.7269, 0.1889);
-    }, 50);
-    return () => clearTimeout(timer);
+        updateZDisplay(s.current.z0x, s.current.z0y);
+        setCAndSync(s.current.cx, s.current.cy);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
     // eslint-disable-next-line
-  }, []);
+  }, [activeFractal]);
 
   // ======== ① MANDELBROT DRAG EVENTS ========
   const mWrapDown = (e: React.MouseEvent) => {
