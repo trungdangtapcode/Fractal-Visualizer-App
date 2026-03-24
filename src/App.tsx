@@ -5,6 +5,8 @@ import {
   iterate, renderFractal, renderOrbit,
   drawCursor, markPoint, fmt, inMand, inJulia
 } from './lib/fractalRender';
+import { Sidebar } from './components/Sidebar';
+import { FractalView } from './components/FractalView';
 
 export default function App() {
   const mCanvas = useRef<HTMLCanvasElement>(null);
@@ -14,6 +16,8 @@ export default function App() {
   const pCanvas = useRef<HTMLCanvasElement>(null);
   const pOver = useRef<HTMLCanvasElement>(null);
   const oCanvas = useRef<HTMLCanvasElement>(null);
+
+  const [activeFractal, setActiveFractal] = useState('Mandelbrot');
 
   const [cVal, setCVal] = useState({ cx: -0.7269, cy: 0.1889 });
   const [zVal, setZVal] = useState({ z0x: 0, z0y: 0 });
@@ -194,20 +198,23 @@ export default function App() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      renderFractal(mCanvas.current, MVIEW, 0, 0, 0, 0, 200, false);
-      setMLoading(false);
-      setMChipTxt('max iter: 200');
+    if (['Mandelbrot', 'Julia', 'BurningShip', 'JuliaSpectrum'].includes(activeFractal)) {
+      const timer = setTimeout(() => {
+        if (!mCanvas.current) return;
+        renderFractal(mCanvas.current, MVIEW, 0, 0, 0, 0, 200, false);
+        setMLoading(false);
+        setMChipTxt('max iter: 200');
 
-      renderFractal(pCanvas.current, PVIEW, 0, 0, 0, 0, 200, false);
-      setPLoading(false);
+        renderFractal(pCanvas.current, PVIEW, 0, 0, 0, 0, 200, false);
+        setPLoading(false);
 
-      updateZDisplay(0, 0);
-      setCAndSync(-0.7269, 0.1889);
-    }, 50);
-    return () => clearTimeout(timer);
+        updateZDisplay(s.current.z0x, s.current.z0y);
+        setCAndSync(s.current.cx, s.current.cy);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
     // eslint-disable-next-line
-  }, []);
+  }, [activeFractal]);
 
   // ======== ① MANDELBROT DRAG EVENTS ========
   const mWrapDown = (e: React.MouseEvent) => {
@@ -416,9 +423,13 @@ export default function App() {
   const inJJ = inJulia(zVal.z0x, zVal.z0y, cVal.cx, cVal.cy);
 
   return (
-    <div className="fractal-root">
-      
-      <div className="fractal-sidebar">
+    <>
+      <Sidebar activeFractal={activeFractal as any} onSelectFractal={setActiveFractal} />
+      <div className="fractal-root" style={{ marginLeft: '4rem', width: 'calc(100% - 4rem)' }}>
+
+        {['Mandelbrot', 'Julia', 'BurningShip', 'JuliaSpectrum'].includes(activeFractal) ? (
+          <>
+        <div className="fractal-sidebar">
         <header>
           <h1>Mandelbrot Explorer</h1>
           <div className="subtitle">Interactive Visualizer</div>
@@ -520,9 +531,14 @@ export default function App() {
               <div className={`loading ${!oLoading ? 'gone' : ''}`}><div className="spin p"></div><span className="load-txt">Needs values…</span></div>
             </div>
           </div>
-          
+
         </div>
       </div>
-    </div>
+          </>
+        ) : (
+          <FractalView type={activeFractal} />
+        )}
+      </div>
+    </>
   );
 }
